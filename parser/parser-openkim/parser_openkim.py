@@ -197,29 +197,29 @@ class OpenkimContext(object):
             backend.addValue("sampling_method", sampling_method)
         with open_section(parser, backend, "section_frame_sequence"):
             if self.temperature:
-                backend.addArrayValues('frame_sequence_temperature_frames', np.array([
+                backend.addArrayValues('xxx_to_rm_frame_sequence_temperature_frames', np.array([
                     i for i in self.singleConfCalcs]))
                 if isinstance(self.temperature, list):
                     if len(self.temperature)<2:
-                        backend.addArrayValues('frame_sequence_temperature', np.array([
+                        backend.addArrayValues('xxx_instant_temperature', np.array([
                             self.temperature[0] for i in self.singleConfCalcs]))
                     else:
-                        backend.addArrayValues('frame_sequence_temperature', np.asarray(self.temperature))
+                        backend.addArrayValues('xxx_instant_temperature', np.asarray(self.temperature))
                 else:
-                    backend.addArrayValues('frame_sequence_temperature', np.asarray([self.temperature]))
+                    backend.addArrayValues('xxx_instant_temperature', np.asarray([self.temperature]))
             if self.cohesivepot:
-                backend.addArrayValues('frame_sequence_potential_energy_frames', np.array([
+                backend.addArrayValues('xxx_to_rm_frame_sequence_potential_energy_frames', np.array([
                     i for i in self.singleConfCalcs]))
                 if isinstance(self.cohesivepot, list):
                     if len(self.cohesivepot)<2:
-                        backend.addArrayValues('frame_sequence_potential_energy', np.array([
+                        backend.addArrayValues('xxx_potential_energy', np.array([
                             self.cohesivepot[0] for i in self.singleConfCalcs]))
                     else:
                         backend.addArrayValues(
-                                'frame_sequence_potential_energy', np.asarray(self.cohesivepot))
+                                'xxx_potential_energy', np.asarray(self.cohesivepot))
                 else:
                     backend.addArrayValues(
-                            'frame_sequence_potential_energy', np.asarray([self.cohesivepot]))
+                            'xxx_potential_energy', np.asarray([self.cohesivepot]))
             if self.cohesiveeng:
                 backend.addArrayValues('x_openkim_frame_sequence_cohesive_energy_frames', np.array([
                     i for i in self.singleConfCalcs]))
@@ -234,8 +234,8 @@ class OpenkimContext(object):
                     backend.addArrayValues(
                             'x_openkim_frame_sequence_cohesive_energy', np.asarray([self.cohesiveeng]))
             backend.addArrayValues('frame_sequence_time', np.array([0. for i in self.singleConfCalcs]))
-            backend.addValue("frame_sequence_to_sampling_ref", parser.gidSections["section_sampling_method"])
-            backend.addArrayValues("frame_sequence_local_frames_ref", np.asarray(self.singleConfCalcs))
+            backend.addValue("frame_sequence_to_sampling_method_ref", parser.gidSections["section_sampling_method"])
+            backend.addArrayValues("frame_sequence_to_frames_ref", np.asarray(self.singleConfCalcs))
 
     def onEnd_calculation(self, parser, kimquery, step=0):
         backend = parser.backend
@@ -255,12 +255,12 @@ class OpenkimContext(object):
                 backend.addValue("energy_total", float(self.cohesivepot[int(step)]))
                 backend.addValue("energy_potential", float(self.cohesivepot[int(step)]))
                 if zeroTemp:
-                    backend.addValue("energy_total_T0", float(self.cohesivepot[int(step)]))
+                    backend.addValue("energy_total_t0", float(self.cohesivepot[int(step)]))
             else:
                 backend.addValue("energy_total", float(self.cohesivepot))
                 backend.addValue("energy_potential", float(self.cohesivepot))
                 if zeroTemp:
-                    backend.addValue("energy_total_T0", float(self.cohesivepot))
+                    backend.addValue("energy_total_t0", float(self.cohesivepot))
         if 'cauchy-stress.si-value' in kimquery:
             cstress = kimquery['cauchy-stress.si-value']
             f = np.zeros((3,3))
