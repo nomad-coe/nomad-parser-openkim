@@ -4,10 +4,8 @@ from builtins import map
 from builtins import range
 from builtins import object
 import logging, sys, bisect
-import setup_paths
 from datetime import datetime
-import os, logging, re, traceback
-from nomadcore.parser_backend import JsonParseEventsWriterBackend
+import re, traceback
 from nomadcore.local_meta_info import loadJsonFile, InfoKindEl
 import numpy as np
 from nomadcore.unit_conversion.unit_conversion import convert_unit_function
@@ -138,7 +136,7 @@ class OpenkimContext(object):
         self.cell = None
         self.labels = None
         celltype = None
-        if('basis-atom-coordinates.source-value' in querydict and 
+        if('basis-atom-coordinates.source-value' in querydict and
            ('a.si-value' in querydict) or
            ('b.si-value' in querydict) or
            ('c.si-value' in querydict) or
@@ -164,9 +162,9 @@ class OpenkimContext(object):
                 else:
                     lat_a = float(a_si_val)
                 si_conv = convert_unit_function("m", "angstrom")
-                cellAtoms = Atoms( 
-                        positions=basis, 
-                        cell=[si_conv(lat_a), 
+                cellAtoms = Atoms(
+                        positions=basis,
+                        cell=[si_conv(lat_a),
                               si_conv(lat_a),
                               si_conv(lat_a)],
                         pbc=True)
@@ -293,7 +291,8 @@ class KIMParser(object):
         backend.startedParsingSession(
             mainFileUri = mainFileUri,
             parserInfo = self.parserInfo)
-        self.superContext.startedParsing(self)
+        superContext = self.superContext
+        superContext.startedParsing(self)
         QueryList = KIMQueryReader(self.fIn)
         try:
             for qi, qdict in enumerate(QueryList):
@@ -338,13 +337,19 @@ parserInfo = {
   "version": "1.0"
 }
 
-if __name__ == "__main__":
-    """
-       This code is modified from parser-vasprun to work for OpenKIM
-    """
-    metaInfoPath = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),"../../../../nomad-meta-info/meta_info/nomad_meta_info/openkim.nomadmetainfo.json"))
-    metaInfoEnv, warnings = loadJsonFile(filePath = metaInfoPath, dependencyLoader = None, extraArgsHandling = InfoKindEl.ADD_EXTRA_ARGS, uri = None)
-    superContext =  OpenkimContext()
-    parser = KIMParser(parserInfo, superContext)
-    backend = JsonParseEventsWriterBackend(metaInfoEnv, sys.stdout)
-    parser.parse(sys.argv[1], sys.argv[2], backend)
+
+class OpenKIMParser():
+   """ A proper class envolop for running this parser from within python. """
+   def __init__(self, backend, **kwargs):
+       self.backend_factory = backend
+
+   def parse(self, mainfile):
+       logging.info('turbomole parser started')
+       logging.getLogger('nomadcore').setLevel(logging.WARNING)
+       backend = self.backend_factory("openkim.nomadmetainfo.json")
+       parserInfo = {'name': 'parser_openkim', 'version': '1.0'}
+       context = OpenkimContext()
+       parser = KIMParser(parserInfo, context)
+       parser.parse('nmd://uri', mainfile, backend)
+
+       return backend
