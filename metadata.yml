@@ -1,0 +1,7 @@
+code-label: openKIM
+code-label-style: 'Capitals: K,I,M'
+code-url: https://openkim.org/
+parser-dir-name: dependencies/parsers/openkim/
+parser-git-url: https://gitlab.mpcdf.mpg.de/nomad-lab/parser-openkim
+parser-specific: ''
+table-of-files: ''
