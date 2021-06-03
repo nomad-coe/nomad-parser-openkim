@@ -45,4 +45,4 @@ def test_1(parser):
     assert sec_system.lattice_vectors[2][2].magnitude == approx(3.31786378e-10)
 
     sec_scc = sec_runs[8].section_single_configuration_calculation[0]
-    assert sec_scc.energy_total.magnitude == approx(4.513135831891813e-19)
+    assert sec_scc.energy_total.value.magnitude == approx(4.513135831891813e-19)

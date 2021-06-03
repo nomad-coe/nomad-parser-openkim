@@ -26,7 +26,8 @@ import numpy as np
 
 from nomad.parsing import FairdiParser
 
-from nomad.datamodel.metainfo.common_dft import Run, SingleConfigurationCalculation, System
+from nomad.datamodel.metainfo.common_dft import Run, SingleConfigurationCalculation, System,\
+    Energy, Stress
 
 
 class OpenKIMParser(FairdiParser):
@@ -100,7 +101,8 @@ class OpenKIMParser(FairdiParser):
             temperatures = get_value_list(entry, 'temperature.si-value')
             for n, energy in enumerate(energies):
                 sec_scc = sec_run.m_create(SingleConfigurationCalculation)
-                sec_scc.energy_total = energy
+                sec_scc.m_add_sub_section(
+                    SingleConfigurationCalculation.energy_total, Energy(value=energy))
                 if temperatures:
                     sec_scc.temperature = temperatures[n]
 
@@ -113,5 +115,6 @@ class OpenKIMParser(FairdiParser):
                 stress_tensor[1][2] = stress[2][1] = stress[3]
                 stress_tensor[0][2] = stress[2][0] = stress[4]
                 stress_tensor[0][1] = stress[1][0] = stress[5]
-
+                sec_scc.m_add_sub_section(
+                    SingleConfigurationCalculation.stress_total, Stress(value=stress_tensor))
         # TODO implement openkim specific metainfo
