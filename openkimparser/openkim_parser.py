@@ -26,8 +26,11 @@ import numpy as np
 
 from nomad.parsing import FairdiParser
 
-from nomad.datamodel.metainfo.common_dft import Run, SingleConfigurationCalculation, System,\
-    Energy, Stress
+from nomad.datamodel.metainfo.run.run import Run, Program
+from nomad.datamodel.metainfo.run.method import Method
+from nomad.datamodel.metainfo.run.system import System, Atoms
+from nomad.datamodel.metainfo.run.calculation import (
+    Calculation, Energy, EnergyEntry, Thermodynamics, Stress, StressEntry)
 
 
 class OpenKIMParser(FairdiParser):
@@ -81,30 +84,29 @@ class OpenKIMParser(FairdiParser):
 
         for entry in self.json:
             sec_run = self.archive.m_create(Run)
-            sec_run.program_name = 'OpenKIM'
-            set_value(sec_run, 'program_version', entry.get('meta.runner.short-id'))
+            sec_run.program = Program(name='OpenKIM', version=entry.get('meta.runner.short-id'))
 
             compile_date = entry.get('meta.created_on')
             if compile_date is not None:
                 dt = datetime.strptime(compile_date, '%Y-%m-%d %H:%M:%S.%f') - datetime(1970, 1, 1)
-                sec_run.program_compilation_datetime = dt.total_seconds()
+                sec_run.program.compilation_datetime = dt.total_seconds()
 
             crystals = get_crystal(entry)
             for crystal in crystals:
                 sec_system = sec_run.m_create(System)
-                sec_system.atom_labels = crystal.get_chemical_symbols()
-                sec_system.atom_positions = crystal.get_positions()
-                sec_system.lattice_vectors = crystal.get_cell().array
-                sec_system.configuration_periodic_dimensions = [True, True, True]
+                sec_atoms = sec_system.m_create(Atoms)
+                sec_atoms.labels = crystal.get_chemical_symbols()
+                sec_atoms.positions = crystal.get_positions()
+                sec_atoms.lattice_vectors = crystal.get_cell().array
+                sec_atoms.periodic = [True, True, True]
 
             energies = get_value_list(entry, 'cohesive-potential-energy.si-value')
             temperatures = get_value_list(entry, 'temperature.si-value')
             for n, energy in enumerate(energies):
-                sec_scc = sec_run.m_create(SingleConfigurationCalculation)
-                sec_scc.m_add_sub_section(
-                    SingleConfigurationCalculation.energy_total, Energy(value=energy))
+                sec_scc = sec_run.m_create(Calculation)
+                sec_scc.energy = Energy(total=EnergyEntry(value=energy))
                 if temperatures:
-                    sec_scc.temperature = temperatures[n]
+                    sec_scc.thermodynamics = Thermodynamics(temperature=temperatures[n])
 
             stress = entry.get('cauchy-stress.si-value')
             if stress is not None:
@@ -115,6 +117,5 @@ class OpenKIMParser(FairdiParser):
                 stress_tensor[1][2] = stress[2][1] = stress[3]
                 stress_tensor[0][2] = stress[2][0] = stress[4]
                 stress_tensor[0][1] = stress[1][0] = stress[5]
-                sec_scc.m_add_sub_section(
-                    SingleConfigurationCalculation.stress_total, Stress(value=stress_tensor))
+                sec_scc.stress = Stress(total=StressEntry(value=stress_tensor))
         # TODO implement openkim specific metainfo
