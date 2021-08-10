@@ -27,10 +27,10 @@ import numpy as np
 from nomad.parsing import FairdiParser
 
 from nomad.datamodel.metainfo.run.run import Run, Program
-from nomad.datamodel.metainfo.run.method import Method
 from nomad.datamodel.metainfo.run.system import System, Atoms
 from nomad.datamodel.metainfo.run.calculation import (
     Calculation, Energy, EnergyEntry, Thermodynamics, Stress, StressEntry)
+import openkimparser.metainfo  # pylint: disable=unused-import
 
 
 class OpenKIMParser(FairdiParser):
@@ -46,12 +46,6 @@ class OpenKIMParser(FairdiParser):
 
         with open(self.filepath) as f:
             self.json = json.load(f)
-
-        def set_value(section, key, val, unit=None):
-            if val is None:
-                return
-            val = val * unit if unit is not None else val
-            setattr(section, key, val)
 
         def get_value_list(entry, key):
             val = entry.get(key, [])
