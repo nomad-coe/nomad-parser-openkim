@@ -26,9 +26,9 @@ import numpy as np
 
 from nomad.parsing import FairdiParser
 
-from nomad.datamodel.metainfo.run.run import Run, Program
-from nomad.datamodel.metainfo.run.system import System, Atoms
-from nomad.datamodel.metainfo.run.calculation import (
+from nomad.datamodel.metainfo.simulation.run import Run, Program
+from nomad.datamodel.metainfo.simulation.system import System, Atoms
+from nomad.datamodel.metainfo.simulation.calculation import (
     Calculation, Energy, EnergyEntry, Thermodynamics, Stress, StressEntry)
 import openkimparser.metainfo  # pylint: disable=unused-import
 
