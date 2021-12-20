@@ -25,6 +25,7 @@ from ase.spacegroup import crystal as asecrystal
 import numpy as np
 
 from nomad.parsing import FairdiParser
+from nomad.datamodel import EntryArchive
 
 from nomad.datamodel.metainfo.simulation.run import Run, Program
 from nomad.datamodel.metainfo.simulation.system import System, Atoms
@@ -33,20 +34,20 @@ from nomad.datamodel.metainfo.simulation.calculation import (
 import openkimparser.metainfo  # pylint: disable=unused-import
 
 
-class OpenKIMParser(FairdiParser):
-    def __init__(self):
-        super().__init__(
-            name='parsers/openkim', code_name='OpenKIM', domain='dft',
-            mainfile_contents_re=r'OPENKIM')
+class Converter:
+    def __init__(self, entries):
+        self.entries = entries
 
-    def parse(self, filepath, archive, logger):
-        self.filepath = os.path.abspath(filepath)
-        self.archive = archive
-        self.logger = logger if logger is not None else logging.getLogger('__name__')
+    @property
+    def entries(self):
+        return self._entries
 
-        with open(self.filepath) as f:
-            self.json = json.load(f)
+    @entries.setter
+    def entries(self, value):
+        self._entries = value
+        self.archive = EntryArchive()
 
+    def convert(self, filename='openkim_archive.json'):
         def get_value_list(entry, key):
             val = entry.get(key, [])
             return val if isinstance(val, list) else [val]
@@ -56,8 +57,8 @@ class OpenKIMParser(FairdiParser):
             basis = entry.get('basis-atom-coordinates.source-value', [])
             spacegroup = entry.get('space-group.source-value', 1)
             cellpar_a = entry.get('a.si-value', 1)
-            cellpar_b = entry.get('a.si-value', cellpar_a)
-            cellpar_c = entry.get('b.si-value', cellpar_a)
+            cellpar_b = entry.get('b.si-value', cellpar_a)
+            cellpar_c = entry.get('c.si-value', cellpar_a)
             # TODO are angles denoted by alpha, beta, gamma in openkim? can they be lists?
             alpha = entry.get('alpha.source-value', 90)
             beta = entry.get('beta.source-value', 90)
@@ -76,7 +77,8 @@ class OpenKIMParser(FairdiParser):
                     pass
             return atoms
 
-        for entry in self.json:
+        # first entry is the parser-generated header used identify an  open-kim
+        for entry in self.entries:
             sec_run = self.archive.m_create(Run)
             sec_run.program = Program(name='OpenKIM', version=entry.get('meta.runner.short-id'))
 
@@ -104,12 +106,58 @@ class OpenKIMParser(FairdiParser):
 
             stress = entry.get('cauchy-stress.si-value')
             if stress is not None:
+                sec_scc = sec_run.calculation[-1] if sec_run.calculation else sec_run.m_create(Calculation)
                 stress_tensor = np.zeros((3, 3))
                 stress_tensor[0][0] = stress[0]
                 stress_tensor[1][1] = stress[1]
                 stress_tensor[2][2] = stress[2]
-                stress_tensor[1][2] = stress[2][1] = stress[3]
-                stress_tensor[0][2] = stress[2][0] = stress[4]
-                stress_tensor[0][1] = stress[1][0] = stress[5]
+                stress_tensor[1][2] = stress_tensor[2][1] = stress[3]
+                stress_tensor[0][2] = stress_tensor[2][0] = stress[4]
+                stress_tensor[0][1] = stress_tensor[1][0] = stress[5]
                 sec_scc.stress = Stress(total=StressEntry(value=stress_tensor))
         # TODO implement openkim specific metainfo
+
+        # write archive to file
+        if filename is not None:
+            with open(filename, 'w') as f:
+                json.dump(self.archive.m_to_dict(), f, indent=4)
+
+
+class OpenKIMParser(FairdiParser):
+    def __init__(self):
+        super().__init__(
+            name='parsers/openkim', code_name='OpenKIM', domain='dft',
+            mainfile_mime_re=r'(application/json)|(text/.*)',
+            mainfile_contents_re=r'openkim|OPENKIM|OpenKIM')
+
+    def parse(self, filepath, archive, logger):
+        logger = logger if logger is not None else logging.getLogger('__name__')
+
+        try:
+            with open(os.path.abspath(filepath), 'rt') as f:
+                archive_data = json.load(f)
+        except Exception:
+            logger.error('Error reading openkim archive')
+            return
+
+        if isinstance(archive_data, dict) and archive_data.get('run') is not None:
+            archive.m_update_from_dict(archive_data)
+            return
+
+        # support for old version
+        if isinstance(archive_data, dict) and archive_data.get('QUERY') is not None:
+            archive_data = archive_data['QUERY']
+
+        converter = Converter(archive_data)
+        converter.archive = archive
+        converter.convert()
+
+
+def openkim_entries_to_nomad_archive(entries, filename=None):
+    if isinstance(entries, str):
+        if filename is None:
+            filename = 'openkim_archive_%s.json' % entries.rstrip('.json')
+        with open(entries) as f:
+            entries = json.load(f)
+
+    Converter(entries).convert(filename)

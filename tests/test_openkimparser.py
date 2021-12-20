@@ -31,7 +31,7 @@ def parser():
     return OpenKIMParser()
 
 
-def test_1(parser):
+def test_entry1(parser):
     archive = EntryArchive()
     parser.parse('tests/data/data.json', archive, None)
 
@@ -46,3 +46,17 @@ def test_1(parser):
 
     sec_scc = sec_runs[8].calculation[0]
     assert sec_scc.energy.total.value.magnitude == approx(4.513135831891813e-19)
+
+
+def test_entry2(parser):
+    archive = EntryArchive()
+    parser.parse('tests/data/TE_531821030293_000_and_MO_122703700223_002_1500785453_tr.json', archive, None)
+
+    assert len(archive.run) == 1
+
+
+def test_archive(parser):
+    archive = EntryArchive()
+    parser.parse('tests/data/openkim_archive_data.json', archive, None)
+
+    assert len(archive.run) == 10
