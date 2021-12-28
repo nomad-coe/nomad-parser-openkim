@@ -18,25 +18,30 @@
 #
 
 import os
+import re
 import logging
 import json
 from datetime import datetime
-from ase.spacegroup import crystal as asecrystal
+from ase.cell import Cell as asecell
+from ase.atoms import Atoms as aseatoms
 import numpy as np
 
+from nomad.units import ureg
 from nomad.parsing import FairdiParser
 from nomad.datamodel import EntryArchive
 
 from nomad.datamodel.metainfo.simulation.run import Run, Program
 from nomad.datamodel.metainfo.simulation.system import System, Atoms
 from nomad.datamodel.metainfo.simulation.calculation import (
-    Calculation, Energy, EnergyEntry, Thermodynamics, Stress, StressEntry)
+    BandEnergies, BandStructure, Calculation, Energy, EnergyEntry, Thermodynamics, Stress, StressEntry)
+from nomad.datamodel.metainfo.workflow import Phonon, Workflow, Elastic, Interface
 import openkimparser.metainfo  # pylint: disable=unused-import
 
 
 class Converter:
-    def __init__(self, entries):
+    def __init__(self, entries, logger=None):
         self.entries = entries
+        self.logger = logger if logger is not None else logging.getLogger('__name__')
 
     @property
     def entries(self):
@@ -48,33 +53,42 @@ class Converter:
         self.archive = EntryArchive()
 
     def convert(self, filename='openkim_archive.json'):
-        def get_value_list(entry, key):
-            val = entry.get(key, [])
-            return val if isinstance(val, list) else [val]
+        def get_value(entry, key, array=False, default=None):
+            val = entry.get(key, [] if array else default)
+            return [val] if array and not isinstance(val, list) else val
+            # unit = entry.get(re.sub('-value', '-unit', key))
+            # return val * ureg(unit) if unit is not None else val
 
-        def get_crystal(entry):
+        def symmetrize_matrix(matrix):
+            return np.tril(matrix) + np.triu(np.transpose(matrix), 1)
+
+        def get_atoms(entry):
             symbols = entry.get('species.source-value', [])
-            basis = entry.get('basis-atom-coordinates.source-value', [])
+            basis = entry.get('basis-atom-coordinates.source-value', [[0., 0., 0.]])
             spacegroup = entry.get('space-group.source-value', 1)
-            cellpar_a = entry.get('a.si-value', 1)
-            cellpar_b = entry.get('b.si-value', cellpar_a)
-            cellpar_c = entry.get('c.si-value', cellpar_a)
+            cellpar = []
+            for x in ['a', 'b', 'c']:
+                value = entry.get(f'{x}.si-value', cellpar[0] if cellpar else 1)
+                cellpar.append([value] if not isinstance(value, list) else value)
+            cellpar = (cellpar * ureg.m).to('angstrom').magnitude
+
             # TODO are angles denoted by alpha, beta, gamma in openkim? can they be lists?
             alpha = entry.get('alpha.source-value', 90)
             beta = entry.get('beta.source-value', 90)
             gamma = entry.get('gamma.source-value', 90)
 
-            if isinstance(cellpar_a, float):
-                cellpar_a, cellpar_b, cellpar_c = [cellpar_a], [cellpar_b], [cellpar_c]
-
             atoms = []
-            for n in range(len(cellpar_a)):
+            for n in range(len(cellpar[0])):
                 try:
-                    atoms.append(asecrystal(
-                        symbols=symbols, basis=basis, spacegroup=spacegroup, cellpar=[
-                            cellpar_a[n], cellpar_b[n], cellpar_c[n], alpha, beta, gamma]))
+                    cell = asecell.fromcellpar([cellpar[0][n], cellpar[1][n], cellpar[2][n], alpha, beta, gamma])
+                    atom = aseatoms(scaled_positions=basis, cell=cell, pbc=True)
+                    if len(symbols) == len(atom.numbers):
+                        atom.symbols = symbols
+                    else:
+                        atom.symbols = ['X' for _ in atom.numbers] if len(symbols) == 0 else symbols
+                    atoms.append(atom)
                 except Exception:
-                    pass
+                    self.logger.error('Error generating structure.')
             return atoms
 
         # first entry is the parser-generated header used identify an  open-kim
@@ -87,24 +101,29 @@ class Converter:
                 dt = datetime.strptime(compile_date, '%Y-%m-%d %H:%M:%S.%f') - datetime(1970, 1, 1)
                 sec_run.program.compilation_datetime = dt.total_seconds()
 
-            crystals = get_crystal(entry)
-            for crystal in crystals:
+            # openkim metadata
+            sec_run.x_openkim_meta = {key: entry.pop(key) for key in list(entry.keys()) if key.startswith('meta.')}
+
+            atoms = get_atoms(entry)
+            for atom in atoms:
                 sec_system = sec_run.m_create(System)
                 sec_atoms = sec_system.m_create(Atoms)
-                sec_atoms.labels = crystal.get_chemical_symbols()
-                sec_atoms.positions = crystal.get_positions()
-                sec_atoms.lattice_vectors = crystal.get_cell().array
+                sec_atoms.labels = atom.get_chemical_symbols()
+                sec_atoms.positions = atom.get_positions() * ureg.angstrom
+                sec_atoms.lattice_vectors = atom.get_cell().array * ureg.angstrom
                 sec_atoms.periodic = [True, True, True]
 
-            energies = get_value_list(entry, 'cohesive-potential-energy.si-value')
-            temperatures = get_value_list(entry, 'temperature.si-value')
+            energies = get_value(entry, 'cohesive-potential-energy.si-value', True)
             for n, energy in enumerate(energies):
                 sec_scc = sec_run.m_create(Calculation)
                 sec_scc.energy = Energy(total=EnergyEntry(value=energy))
-                if temperatures:
-                    sec_scc.thermodynamics = Thermodynamics(temperature=temperatures[n])
 
-            stress = entry.get('cauchy-stress.si-value')
+            temperatures = get_value(entry, 'temperature.si-value', True)
+            for n, temperature in enumerate(temperatures):
+                sec_scc = sec_run.calculation[n] if sec_run.calculation else sec_run.m_create(Calculation)
+                sec_scc.thermodynamics.append(Thermodynamics(temperature=temperature))
+
+            stress = get_value(entry, 'cauchy-stress.si-value')
             if stress is not None:
                 sec_scc = sec_run.calculation[-1] if sec_run.calculation else sec_run.m_create(Calculation)
                 stress_tensor = np.zeros((3, 3))
@@ -114,7 +133,81 @@ class Converter:
                 stress_tensor[1][2] = stress_tensor[2][1] = stress[3]
                 stress_tensor[0][2] = stress_tensor[2][0] = stress[4]
                 stress_tensor[0][1] = stress_tensor[1][0] = stress[5]
-                sec_scc.stress = Stress(total=StressEntry(value=stress_tensor))
+                sec_scc.stress = Stress(total=StressEntry(value=symmetrize_matrix(stress_tensor)))
+
+            for key, val in entry.items():
+                key = 'x_openkim_%s' % re.sub(r'\W', '_', key)
+                try:
+                    setattr(sec_run, key, val)
+                except Exception:
+                    pass
+
+            # workflow
+            property_id = entry.get('property-id', '')
+            # elastic constants
+            if 'elastic-constants' in property_id:
+                sec_workflow = self.archive.m_create(Workflow)
+                sec_workflow.type = 'elastic'
+                sec_elastic = sec_workflow.m_create(Elastic)
+                cij = [[get_value(entry, f'c{i}{j}.si-value', default=0) for i in range(1, 7)] for j in range(1, 7)]
+                sec_elastic.elastic_constants_matrix_second_order = symmetrize_matrix(cij)
+
+                if 'strain-gradient' in property_id:
+                    dij = [[get_value(entry, f'd-{i}-{j}.si-value', default=0) for i in range(1, 19)] for j in range(1, 19)]
+                    sec_elastic.elastic_constants_gradient_matrix_second_order = symmetrize_matrix(dij)
+
+                if 'excess.si-value' in entry:
+                    sec_elastic.x_openkim_excess = entry['excess.si-value']
+
+            if 'gamma-surface' in property_id or 'stacking-fault' in property_id or 'twinning-fault' in property_id:
+                sec_workflow = self.archive.m_create(Workflow)
+                sec_workflow.type = 'interface'
+                sec_interface = sec_workflow.m_create(Interface)
+                if 'gamma-surface.si-value' in entry:
+                    directions, displacements = [], []
+                    for key in entry.keys():
+                        direction = re.match(r'fault-plane-shift-fraction-(\d+).source-value', key)
+                        if direction:
+                            directions.append(direction.group(1))
+                            displacements.append(entry[key])
+                    sec_interface.dimensionality = len(directions)
+                    sec_interface.shift_direction = directions
+                    sec_interface.displacement_fraction = displacements
+                    sec_interface.gamma_surface = entry['gamma-surface.si-value']
+
+                if 'fault-plane-energy.si-value' in entry:
+                    sec_interface.dimensionality = 1
+                    sec_interface.displacement_fraction = [entry['fault-plane-shift-fraction.source-value']]
+                    sec_interface.energy_fault_plane = entry['fault-plane-energy.si-value']
+
+                sec_interface.energy_extrinsic_stacking_fault = entry.get('extrinsic-stacking-fault-energy.si-value')
+                sec_interface.energy_intrinsic_stacking_fault = entry.get('intrinsic-stacking-fault-energy.si-value')
+                sec_interface.energy_unstable_stacking_fault = entry.get('unstable-stacking-energy.si-value')
+                sec_interface.energy_unstable_twinning_fault = entry.get('unstable-twinning-energy.si-value')
+                sec_interface.slip_fraction = entry.get('unstable-slip-fraction.source-value')
+
+            if 'phonon-dispersion' in property_id:
+                sec_workflow = self.archive.m_create(Workflow)
+                sec_workflow.type = 'phonon'
+                sec_phonon = sec_workflow.m_create(Phonon)
+                if 'response-frequency.si-value' in entry:
+                    sec_scc = sec_run.calculation[-1] if sec_run.calculation else sec_run.m_create(Calculation)
+                    sec_bandstructure = sec_scc.m_create(BandStructure, Calculation.band_structure_phonon)
+                    # TODO find a way to segment the frequencies
+                    sec_segment = sec_bandstructure.m_create(BandEnergies)
+                    energies = entry['response-frequency.si-value']
+                    if len(np.shape(energies)) == 1:
+                        energies = energies[0]
+                    sec_segment.energies = [entry['response-frequency.si-value']]
+                    try:
+                        wavevector = entry['wave-vector-direction.si-value']
+                        cell = sec_run.system[-1].atoms.lattice_vectors.magnitude
+                        # TODO how about spin-polarized case, not sure about calculation of kpoints value
+                        sec_segment.kpoints = np.dot(wavevector, cell)
+                    except Exception:
+                        pass
+                if 'wave-number.si-value' in entry:
+                    sec_phonon.x_openkim_wave_number = [entry['wave-number.si-value']]
         # TODO implement openkim specific metainfo
 
         # write archive to file
@@ -148,7 +241,7 @@ class OpenKIMParser(FairdiParser):
         if isinstance(archive_data, dict) and archive_data.get('QUERY') is not None:
             archive_data = archive_data['QUERY']
 
-        converter = Converter(archive_data)
+        converter = Converter(archive_data, logger)
         converter.archive = archive
         converter.convert()
 
@@ -156,7 +249,7 @@ class OpenKIMParser(FairdiParser):
 def openkim_entries_to_nomad_archive(entries, filename=None):
     if isinstance(entries, str):
         if filename is None:
-            filename = 'openkim_archive_%s.json' % entries.rstrip('.json')
+            filename = 'openkim_archive_%s.json' % os.path.basename(entries).rstrip('.json')
         with open(entries) as f:
             entries = json.load(f)
 

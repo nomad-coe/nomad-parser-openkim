@@ -16,4 +16,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from .openkim_parser import OpenKIMParser
+from .openkim_parser import OpenKIMParser, openkim_entries_to_nomad_archive

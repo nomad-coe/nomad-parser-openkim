@@ -20,9 +20,9 @@ import numpy as np            # pylint: disable=unused-import
 import typing                 # pylint: disable=unused-import
 from nomad.metainfo import (  # pylint: disable=unused-import
     MSection, MCategory, Category, Package, Quantity, Section, SubSection, SectionProxy,
-    Reference
+    Reference, JSON
 )
-from nomad.datamodel.metainfo import simulation
+from nomad.datamodel.metainfo import simulation, workflow
 
 
 m_package = Package()
@@ -32,28 +32,109 @@ class Run(simulation.run.Run):
 
     m_def = Section(validate=False, extends_base_section=True)
 
-    openkim_build_date = Quantity(
+    x_openkim_build_date = Quantity(
         type=str,
         shape=[],
         description='''
         build date as string
         ''')
 
-    openkim_src_date = Quantity(
+    x_openkim_src_date = Quantity(
         type=str,
         shape=[],
         description='''
         date of last modification of the source as string
         ''')
 
+    x_openkim_inserted_on = Quantity(
+        type=str,
+        shape=[],
+        description='''
+        title for the property
+        ''')
 
-class Method(simulation.method.Method):
+    x_openkim_property_id = Quantity(
+        type=str,
+        shape=[],
+        description='''
+        unique ID of the property
+        ''')
+
+    x_openkim_property_title = Quantity(
+        type=str,
+        shape=[],
+        description='''
+        title for the property
+        ''')
+
+    x_openkim_property_description = Quantity(
+        type=str,
+        shape=[],
+        description='''
+        title for the property
+        ''')
+
+    x_openkim_instance_id = Quantity(
+        type=np.dtype(np.int32),
+        shape=[],
+        description='''
+        unique ID of the property
+        ''')
+
+    x_openkim_latest = Quantity(
+        type=bool,
+        shape=[],
+        description='''
+        ''')
+
+    x_openkim_meta = Quantity(
+        type=JSON,
+        shape=[],
+        description='''
+        openkim metadata'''
+    )
+
+
+class System(simulation.system.System):
 
     m_def = Section(validate=False, extends_base_section=True)
 
-    x_openkim_atom_kind_refs = Quantity(
-        type=simulation.method.AtomParameters,
-        shape=['number_of_atoms'],
+    x_openkim_short_name = Quantity(
+        type=str,
+        shape=[1],
         description='''
-        reference to the atom kinds of each atom
+        short name defining the crystal
+        ''')
+
+    x_openkim_space_group = Quantity(
+        type=str,
+        shape=[1],
+        description='''
+        short name defining the crystal
+        ''')
+
+
+class Elastic(workflow.Elastic):
+
+    m_def = Section(validate=False, extends_base_section=True)
+
+    x_openkim_excess = Quantity(
+        type=np.dtype(np.float64),
+        shape=[],
+        unit='pascal',
+        description='''
+        total square numerical asymmetry of the calculated elastic constants
+        ''')
+
+
+class Phonon(workflow.Phonon):
+
+    m_def = Section(validate=False, extends_base_section=True)
+
+    x_openkim_wave_number = Quantity(
+        type=np.dtype(np.float64),
+        shape=['n_spin_channels', 'n_kpoints'],
+        unit='1 / m',
+        description='''
+        wave numbers for each k-point
         ''')
