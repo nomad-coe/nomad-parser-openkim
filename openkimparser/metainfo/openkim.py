@@ -138,3 +138,36 @@ class Phonon(workflow.Phonon):
         description='''
         wave numbers for each k-point
         ''')
+
+
+class Workflow(workflow.Workflow):
+
+    m_def = Section(validate=False, extends_base_section=True)
+
+    x_openkim_property = Quantity(
+        type=str,
+        shape=[],
+        description='''
+        name of the property to be compared to nomad
+        ''')
+
+    x_openkim_nomad_rms_error = Quantity(
+        type=np.dtype(np.float64),
+        shape=[],
+        description='''
+        root mean square difference of the openkim data with respect to nomad
+        ''')
+
+    x_openkim_nomad_std = Quantity(
+        type=np.dtype(np.float64),
+        shape=[],
+        description='''
+        standard deviation of the nomad data
+        ''')
+
+    x_openkim_n_nomad_data = Quantity(
+        type=np.dtype(np.int32),
+        shape=[],
+        description='''
+        number of nomad entries with property corresponding to x_openkim_property
+        ''')
