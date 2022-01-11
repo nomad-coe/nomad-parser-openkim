@@ -26,7 +26,6 @@ from ase.cell import Cell
 from ase.atoms import Atoms as aseatoms
 from ase.spacegroup import Spacegroup
 import numpy as np
-import nomad
 
 from nomad.units import ureg
 from nomad.parsing import FairdiParser
