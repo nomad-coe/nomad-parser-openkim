@@ -35,6 +35,7 @@ from nomad.client import api
 
 from nomad.datamodel.metainfo.simulation.run import Run, Program
 from nomad.datamodel.metainfo.simulation.system import System, Atoms
+from nomad.datamodel.metainfo.simulation.method import Method, ForceField, Model
 from nomad.datamodel.metainfo.simulation.calculation import (
     BandEnergies, BandStructure, Calculation, Energy, EnergyEntry, Thermodynamics, Stress, StressEntry)
 from nomad.datamodel.metainfo.workflow import Phonon, Workflow, Elastic, Interface
@@ -216,6 +217,14 @@ class Converter:
                 self.material['structure_name'] = entry['short-name.source-value'][-1]
             except Exception:
                 pass
+
+            # model parameters
+            model = sec_run.x_openkim_meta.get('meta.model')
+            if model is not None:
+                sec_method = sec_run.m_create(Method)
+                sec_method.force_field = ForceField(model=[Model(
+                    name=model,
+                    reference='https://openkim.org/id/%s' % model)])
 
             energies = get_value(entry, 'cohesive-potential-energy.si-value', True)
             for n, energy in enumerate(energies):

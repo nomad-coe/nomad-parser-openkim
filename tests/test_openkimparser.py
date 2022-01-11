@@ -45,6 +45,8 @@ def test_entry(parser):
     assert sec_system.atoms.positions[1][1].magnitude == approx(1.65893189e-10)
     assert sec_system.atoms.lattice_vectors[2][2].magnitude == approx(3.31786378e-10)
 
+    assert sec_run[0].method[0].force_field.model[0].name == 'LJ_ElliottAkerson_2015_Universal__MO_959249795837_003'
+
     sec_scc = sec_run[8].calculation[0]
     assert sec_scc.energy.total.value.magnitude == approx(4.513135831891813e-19)
 
